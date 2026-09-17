@@ -1,5 +1,5 @@
 locals {
-  actual_region = var.space_type == "common" ? var.region : data.heroku_space.selected[0].region
+  actual_region = var.space_name != "" ? data.heroku_space.selected[0].region : var.region
 
   # Dyno sizes Heroku allows per space type (Eco/Basic/Standard/Performance
   # only run in Common Runtime; Private/Shield Spaces have their own tiers).
@@ -34,7 +34,7 @@ locals {
 }
 
 data "heroku_space" "selected" {
-  count = var.space_type == "common" ? 0 : 1
+  count = var.space_name != "" ? 1 : 0
   name  = var.space_name
 }
 
@@ -43,8 +43,8 @@ resource "heroku_app" "instance" {
   # The provider schema marks "region" as required even when "space" is set,
   # but Heroku's API still validates that it matches the space's actual
   # region, so it must be looked up rather than hardcoded.
-  region = var.space_type == "common" ? var.region : data.heroku_space.selected[0].region
-  space  = var.space_type == "common" ? null : var.space_name
+  region = var.space_name != "" ? data.heroku_space.selected[0].region : var.region
+  space  = var.space_name != "" ? var.space_name : null
 
   dynamic "organization" {
     for_each = var.organization == "" ? [] : [var.organization]
