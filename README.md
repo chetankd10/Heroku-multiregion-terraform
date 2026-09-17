@@ -16,6 +16,7 @@ multiple regions/spaces at once — see [Multi-region expansion](#multi-region-e
 - [Quick start](#quick-start)
 - [Deploying with the wizard (`deploy.sh`)](#deploying-with-the-wizard-deploysh)
 - [Deploying manually with Terraform](#deploying-manually-with-terraform)
+- [Destroying an app](#destroying-an-app)
 - [Space types](#space-types)
 - [Variables reference](#variables-reference)
 - [Outputs](#outputs)
@@ -34,7 +35,7 @@ For a single `terraform apply`, this module creates:
 | `heroku_addon.postgres` | A Heroku Postgres database attached to the app, plan chosen per space type. |
 | `heroku_build.deploy` | Builds and deploys the contents of [`app/`](#the-sample-app) using the `heroku/nodejs` buildpack. |
 | `heroku_formation.web` | The `web` process, sized by `dyno_size`. |
-| `heroku_formation.worker` | The `worker` process, sized by `dyno_size`. |
+| `heroku_formation.worker` | The `worker` process, sized by `worker_dyno_size` (defaults to `dyno_size` if left blank). |
 
 The app receives its physical region as the `APP_REGION` config var
 (resolved from `var.region` for Common Runtime, or looked up from the
@@ -82,14 +83,18 @@ pass `-var` flags yourself.
      optional organization/team.
    - **Private/Shield Space** → the existing space's name, plus the
      organization/team that owns it (required).
-4. **Dyno size** — numbered list, filtered to the sizes valid for the
+4. **Web dyno size** — numbered list, filtered to the sizes valid for the
    space type you picked (see [Space types](#space-types)).
-5. **Postgres plan** — numbered list, filtered the same way.
-6. Prints a summary of your choices, then runs:
+5. **Worker dyno size** — same numbered list, plus a "Same as web" option
+   first (the default choice) so worker only needs its own size when you
+   want it to differ.
+6. **Postgres plan** — numbered list, filtered the same way.
+7. Prints a summary of your choices, then runs:
 
    ```bash
    terraform apply -var "app_name=..." -var "space_type=..." -var "region=..." \
-     -var "space_name=..." -var "organization=..." -var "dyno_size=..." -var "db_plan=..."
+     -var "space_name=..." -var "organization=..." -var "dyno_size=..." \
+     -var "worker_dyno_size=..." -var "db_plan=..."
    ```
 
    Terraform's own plan output and `yes` confirmation still apply — the
@@ -110,6 +115,7 @@ terraform apply \
   -var "space_name=" \
   -var "organization=" \
   -var "dyno_size=standard-1x" \
+  -var "worker_dyno_size=" \
   -var "db_plan=essential-0"
 ```
 
@@ -122,12 +128,45 @@ blocks that:
 - `region` is set (and `space_name` blank) when `space_type = "common"`,
   and `space_name` is set (and `region` blank) otherwise.
 - `dyno_size` is one of the values valid for the chosen `space_type`.
+- `worker_dyno_size` — if set, must also be one of the values valid for
+  the chosen `space_type`; if left blank it falls back to `dyno_size`.
 - `db_plan` is one of the Postgres plan slugs valid for the chosen
   `space_type`.
 
 Terraform will refuse to apply with a clear error message if any of these
 don't line up — so even outside the wizard, invalid combinations get
 caught at `plan`/`apply` time rather than surfacing as a Heroku API error.
+
+## Destroying an app
+
+To tear down everything this module created for an instance (the app,
+its Postgres database, the build, and both dynos), run `terraform
+destroy` from the same directory you applied from:
+
+```bash
+terraform destroy
+```
+
+- If you deployed with a `terraform.tfvars` file, `terraform destroy`
+  alone is enough — it reuses those same variable values.
+- If you deployed by passing `-var` flags (or via `deploy.sh`), pass at
+  least `app_name` again so Terraform can identify the app — the other
+  variables (`space_type`, `region`, `space_name`, `dyno_size`,
+  `worker_dyno_size`, `db_plan`) default to blank and aren't required for
+  destroy:
+
+  ```bash
+  terraform destroy -var "app_name=myapp-us"
+  ```
+
+  If you're unsure which values were used, check `terraform.tfstate` or
+  run `terraform show` first.
+- As with `apply`, `terraform destroy` shows a plan of what will be
+  removed and asks you to confirm with `yes` before deleting anything.
+- This only destroys the single instance managed by your current
+  Terraform state. If you've deployed multiple regions/spaces as
+  separate `terraform apply` runs (e.g. separate working directories or
+  workspaces), destroy each one independently.
 
 ## Space types
 
@@ -162,6 +201,11 @@ Source: [Heroku Postgres add-on plans](https://elements.heroku.com/addons/heroku
 Note the tier numbering skips `-1` (e.g. `standard-2` follows `standard-0`)
 — that's Heroku's own plan naming, not a typo.
 
+`dyno_size` sizes `heroku_formation.web`. `heroku_formation.worker` has
+its own `worker_dyno_size` variable — leave it blank to match `dyno_size`,
+or set it to any value from the table above (for the same `space_type`)
+to size the worker differently from web.
+
 The authoritative lists live in `local.dyno_sizes_by_space_type` and
 `local.db_plans_by_space_type` in `main.tf`; the arrays in `deploy.sh` are
 kept in sync with them by hand, so if you change one, change the other.
@@ -176,7 +220,8 @@ kept in sync with them by hand, so if you change one, change the other.
 | `space_name` | string | `""` | Existing Private/Shield Space name. Required iff `space_type != "common"`. |
 | `organization` | string | `""` | Heroku team owning the app. Required if `space_name` is set. |
 | `db_plan` | string | — | Heroku Postgres plan slug, must be valid for `space_type` (see table above). |
-| `dyno_size` | string | — | Dyno size for both `web` and `worker`, must be valid for `space_type` (see table above). |
+| `dyno_size` | string | — | Dyno size for `web`, must be valid for `space_type` (see table above). |
+| `worker_dyno_size` | string | `""` | Dyno size for `worker`, must be valid for `space_type` if set. Defaults to `dyno_size` when left blank. |
 
 ## Outputs
 
@@ -231,8 +276,8 @@ steps to activate it (extracting `main.tf` into a reusable module under
 - **`Error: no matching Heroku app found` / auth errors** — make sure
   `HEROKU_API_KEY` is exported in your shell before running `terraform`
   or `deploy.sh`.
-- **Precondition failed: dyno_size / db_plan not valid for space_type** —
-  you passed a value from the wrong table in
+- **Precondition failed: dyno_size / worker_dyno_size / db_plan not valid
+  for space_type** — you passed a value from the wrong table in
   [Space types](#space-types); re-run `deploy.sh` and let it filter the
   list for you, or double-check `local.dyno_sizes_by_space_type` /
   `local.db_plans_by_space_type` in `main.tf`.

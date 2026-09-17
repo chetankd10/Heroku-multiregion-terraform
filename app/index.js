@@ -10,7 +10,7 @@ app.get('/', (req, res) => {
     message: spaceName
       ? `Hello from the ${spaceName} instance (region: ${region})`
       : `Hello from the ${region} instance`,
-    space_name: spaceName,
+    ...(spaceName ? { space_name: spaceName } : {}),
     region,
     dyno: process.env.DYNO || 'local',
     time: new Date().toISOString(),

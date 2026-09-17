@@ -88,18 +88,28 @@ case "$SPACE_TYPE" in
     ;;
 esac
 
-prompt_choice DYNO_SIZE "Dyno size (${SPACE_TYPE_LABEL}):" "${DYNO_SIZES[@]}"
+prompt_choice DYNO_SIZE "Web dyno size (${SPACE_TYPE_LABEL}):" "${DYNO_SIZES[@]}"
+
+WORKER_DYNO_CHOICES=("Same as web ($DYNO_SIZE)" "${DYNO_SIZES[@]}")
+prompt_choice WORKER_DYNO_CHOICE "Worker dyno size (${SPACE_TYPE_LABEL}):" "${WORKER_DYNO_CHOICES[@]}"
+if [[ "$WORKER_DYNO_CHOICE" == "Same as web ($DYNO_SIZE)" ]]; then
+  WORKER_DYNO_SIZE=""
+else
+  WORKER_DYNO_SIZE="$WORKER_DYNO_CHOICE"
+fi
+
 prompt_choice DB_PLAN "Postgres plan (${SPACE_TYPE_LABEL}):" "${DB_PLANS[@]}"
 
 echo
 echo "== Summary =="
-echo "  app_name:     $APP_NAME"
-echo "  space_type:   $SPACE_TYPE"
-[[ -n "$REGION" ]] && echo "  region:       $REGION"
-[[ -n "$SPACE_NAME" ]] && echo "  space_name:   $SPACE_NAME"
-[[ -n "$ORGANIZATION" ]] && echo "  organization: $ORGANIZATION"
-echo "  dyno_size:    $DYNO_SIZE"
-echo "  db_plan:      $DB_PLAN"
+echo "  app_name:         $APP_NAME"
+echo "  space_type:       $SPACE_TYPE"
+[[ -n "$REGION" ]] && echo "  region:           $REGION"
+[[ -n "$SPACE_NAME" ]] && echo "  space_name:       $SPACE_NAME"
+[[ -n "$ORGANIZATION" ]] && echo "  organization:     $ORGANIZATION"
+echo "  dyno_size:        $DYNO_SIZE"
+echo "  worker_dyno_size: ${WORKER_DYNO_SIZE:-$DYNO_SIZE}"
+echo "  db_plan:          $DB_PLAN"
 echo
 
 TF_ARGS=(
@@ -109,6 +119,7 @@ TF_ARGS=(
   -var "space_name=$SPACE_NAME"
   -var "organization=$ORGANIZATION"
   -var "dyno_size=$DYNO_SIZE"
+  -var "worker_dyno_size=$WORKER_DYNO_SIZE"
   -var "db_plan=$DB_PLAN"
 )
 

@@ -1,6 +1,10 @@
 locals {
   actual_region = var.space_name != "" ? data.heroku_space.selected[0].region : var.region
 
+  # worker_dyno_size defaults to dyno_size (web's size) when left blank, so
+  # existing configs that only set dyno_size keep sizing both processes alike.
+  effective_worker_dyno_size = var.worker_dyno_size != "" ? var.worker_dyno_size : var.dyno_size
+
   # Dyno sizes Heroku allows per space type (Eco/Basic/Standard/Performance
   # only run in Common Runtime; Private/Shield Spaces have their own tiers).
   dyno_sizes_by_space_type = {
@@ -74,6 +78,11 @@ resource "heroku_app" "instance" {
     }
 
     precondition {
+      condition     = contains(lookup(local.dyno_sizes_by_space_type, var.space_type, []), local.effective_worker_dyno_size)
+      error_message = "worker_dyno_size \"${local.effective_worker_dyno_size}\" is not valid for space_type \"${var.space_type}\". Valid: ${join(", ", lookup(local.dyno_sizes_by_space_type, var.space_type, []))}."
+    }
+
+    precondition {
       condition     = contains(lookup(local.db_plans_by_space_type, var.space_type, []), var.db_plan)
       error_message = "db_plan \"${var.db_plan}\" is not valid for space_type \"${var.space_type}\". Valid: ${join(", ", lookup(local.db_plans_by_space_type, var.space_type, []))}."
     }
@@ -109,5 +118,5 @@ resource "heroku_formation" "worker" {
   app_id   = heroku_app.instance.id
   type     = "worker"
   quantity = 1
-  size     = var.dyno_size
+  size     = local.effective_worker_dyno_size
 }

@@ -41,5 +41,11 @@ variable "db_plan" {
 variable "dyno_size" {
   type        = string
   default     = ""
-  description = "Dyno size for the web and worker processes. Valid values depend on space_type - see local.dyno_sizes_by_space_type in main.tf. Required for apply; leave blank for destroy."
+  description = "Dyno size for the web process. Valid values depend on space_type - see local.dyno_sizes_by_space_type in main.tf. Required for apply; leave blank for destroy."
+}
+
+variable "worker_dyno_size" {
+  type        = string
+  default     = ""
+  description = "Dyno size for the worker process. Valid values depend on space_type - see local.dyno_sizes_by_space_type in main.tf. Defaults to the same value as dyno_size when left blank. Leave blank for destroy."
 }
